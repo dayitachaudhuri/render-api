@@ -22,7 +22,7 @@ app.use(bodyParser.json());
 app.get('/urls', async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM urls');
-        res.json(result.rows);
+        res.json(result.rows); // Include the completed status in the response
     } catch (err) {
         console.error(err);
         res.status(500).send('Server Error');
@@ -33,7 +33,10 @@ app.get('/urls', async (req, res) => {
 app.post('/urls', async (req, res) => {
     const { url } = req.body;
     try {
-        const result = await pool.query('INSERT INTO urls (url) VALUES ($1) RETURNING *', [url]);
+        const result = await pool.query(
+            'INSERT INTO urls (url, completed) VALUES ($1, $2) RETURNING *', 
+            [url, false] // Default 'completed' to false
+        );
         res.json(result.rows[0]);
     } catch (err) {
         console.error(err);
@@ -47,6 +50,26 @@ app.delete('/urls/:id', async (req, res) => {
     try {
         await pool.query('DELETE FROM urls WHERE id = $1', [id]);
         res.send('URL deleted successfully');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server Error');
+    }
+});
+
+// Update the 'completed' status of a URL
+app.put('/urls/:id', async (req, res) => {
+    const { id } = req.params;
+    const { completed } = req.body; // Expecting completed status (true/false)
+    try {
+        const result = await pool.query(
+            'UPDATE urls SET completed = $1 WHERE id = $2 RETURNING *',
+            [completed, id]
+        );
+        if (result.rows.length > 0) {
+            res.json(result.rows[0]); // Return the updated URL with the completed status
+        } else {
+            res.status(404).send('URL not found');
+        }
     } catch (err) {
         console.error(err);
         res.status(500).send('Server Error');
