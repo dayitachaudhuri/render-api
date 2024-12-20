@@ -1,4 +1,4 @@
-require('dotenv').config(); // Load environment variables from .env
+require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
@@ -10,66 +10,126 @@ const PORT = process.env.PORT || 3000;
 // PostgreSQL connection pool
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }, // Required for secure connections in hosted environments
+    ssl: { rejectUnauthorized: false },
 });
 
 app.use(cors());
 app.use(bodyParser.json());
 
-// Routes
 
-// Get all URLs
-app.get('/urls', async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM urls');
-        res.json(result.rows); // Include the completed status in the response
-    } catch (err) {
-        console.error(err);
-        res.status(500).send('Server Error');
+// Add video URLs from playlist to the database
+app.post('/urls/playlist', async (req, res) => {
+    const { playlistUrl, videoUrls } = req.body;
+    
+    if (!videoUrls || videoUrls.length === 0) {
+        return res.status(400).send('Video URLs are required.');
     }
-});
 
-// Add a new URL
-app.post('/urls', async (req, res) => {
-    const { url } = req.body;
     try {
-        const result = await pool.query(
-            'INSERT INTO urls (url, completed) VALUES ($1, $2) RETURNING *', 
-            [url, false] // Default 'completed' to false
-        );
-        res.json(result.rows[0]);
-    } catch (err) {
-        console.error(err);
-        res.status(500).send('Server Error');
-    }
-});
-
-// Remove a URL by ID
-app.delete('/urls/:id', async (req, res) => {
-    const { id } = req.params;
-    try {
-        await pool.query('DELETE FROM urls WHERE id = $1', [id]);
-        res.send('URL deleted successfully');
-    } catch (err) {
-        console.error(err);
-        res.status(500).send('Server Error');
-    }
-});
-
-// Update the 'completed' status of a URL
-app.put('/urls/:id', async (req, res) => {
-    const { id } = req.params;
-    const { completed } = req.body; // Expecting completed status (true/false)
-    try {
-        const result = await pool.query(
-            'UPDATE urls SET completed = $1 WHERE id = $2 RETURNING *',
-            [completed, id]
-        );
-        if (result.rows.length > 0) {
-            res.json(result.rows[0]); // Return the updated URL with the completed status
-        } else {
-            res.status(404).send('URL not found');
+        // Insert playlist and video URLs into the database
+        for (const videoUrl of videoUrls) {
+            await pool.query('INSERT INTO urls (playlist, url) VALUES ($1, $2)', [playlistUrl, videoUrl]);
         }
+
+        res.status(200).send('Videos added successfully.');
+    } catch (err) {
+        console.error('Error storing video URLs:', err);
+        res.status(500).send(`Error storing video URLs: ${err.message}`);
+    }
+});
+
+// Get video URLs by playlist
+app.get('/urls/playlist', async (req, res) => {
+    const { playlistUrl } = req.query;
+    
+    if (!playlistUrl) {
+        return res.status(400).send('Playlist URL is required.');
+    }
+
+    try {
+        const result = await pool.query('SELECT * FROM urls WHERE playlist = $1', [playlistUrl]);
+        console.log(result.rows);
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server Error');
+    }
+});
+
+// Toggle the "completed" status of a video
+app.put('/urls/playlist', async (req, res) => {
+    const { videoUrl, completed } = req.body;
+
+    if (!videoUrl) {
+        return res.status(400).send('Video URL is required.');
+    }
+
+    try {
+        await pool.query('UPDATE urls SET completed = $1 WHERE url = $2', [completed, videoUrl]);
+        res.status(200).send('Video completion status updated.');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server Error');
+    }
+});
+
+// Remove a video from the database
+app.delete('/urls/playlist', async (req, res) => {
+    const { videoUrl } = req.body;
+
+    if (!playlistUrl) {
+        return res.status(400).send('Video URL is required.');
+    }
+
+    try {
+        await pool.query('DELETE FROM urls WHERE url = $1', [videoUrl]);
+        res.status(200).send('Video removed.');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server Error');
+    }
+});
+
+
+// Get unique playlists
+app.get('/urls/playlist/all', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT DISTINCT playlist FROM urls');
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server Error');
+    }
+});
+
+// Toggle the "completed" status of a playlist
+app.put('/urls/playlist/all', async (req, res) => {
+    const { playlistUrl, completed } = req.body;
+
+    if (!playlistUrl) {
+        return res.status(400).send('Playlist URL is required.');
+    }
+
+    try {
+        await pool.query('UPDATE urls SET completed = $1 WHERE playlist = $2', [completed, playlistUrl]);
+        res.status(200).send('Playlist completion status updated.');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server Error');
+    }
+});
+
+// Remove a playlist from the database
+app.delete('/urls/playlist/all', async (req, res) => {
+    const { playlistUrl } = req.body;
+
+    if (!playlistUrl) {
+        return res.status(400).send('Playlist URL is required.');
+    }
+
+    try {
+        await pool.query('DELETE FROM urls WHERE playlist = $1', [playlistUrl]);
+        res.status(200).send('Playlist removed.');
     } catch (err) {
         console.error(err);
         res.status(500).send('Server Error');
